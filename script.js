@@ -9,13 +9,11 @@
 
 /* ---------- Configuration ---------- */
 const CONFIG = {
-  endpoint: "https://api.groq.com/openai/v1/chat/completions",
+  endpoint: "https://api.groq.com/openai/v1/responses",
   // Optional: URL of your own server that forwards requests to Groq.
   // When set, the browser never needs (or sends) the Groq key.
   proxyUrl: "",
-  defaultModel: "llama-3.3-70b-versatile",
-  temperature: 0.4,
-  maxTokens: 1000,
+  defaultModel: "openai/gpt-oss-20b",
   maxHistory: 10, // past chat messages sent with every request
   storage: { key: "gate.groqKey", model: "gate.model", lang: "gate.lang" },
 };
@@ -1095,9 +1093,7 @@ async function streamGroq(messages, onDelta, signal) {
     signal,
     body: JSON.stringify({
       model: getModel(),
-      messages,
-      temperature: CONFIG.temperature,
-      max_tokens: CONFIG.maxTokens,
+      input: messages.map(({ role, content }) => ({ role, content })),
       stream: true,
     }),
   });
@@ -1123,7 +1119,8 @@ async function streamGroq(messages, onDelta, signal) {
       const data = line.slice(5).trim();
       if (data === "[DONE]") return;
       try {
-        const piece = JSON.parse(data).choices?.[0]?.delta?.content;
+        const event = JSON.parse(data);
+        const piece = event.type === "response.output_text.delta" ? event.delta : "";
         if (piece) onDelta(piece);
       } catch { /* ignore partial JSON */ }
     }
