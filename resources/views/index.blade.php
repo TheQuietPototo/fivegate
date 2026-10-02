@@ -3,13 +3,14 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="csrf-token" content="{{ csrf_token() }}">
   <title>Lima Gerbang — Five Gates for coffee processing</title>
   <meta name="description" content="A plain-language guide for coffee farmers to check whether a change in processing is really cleaner, with an AI assistant powered by Groq.">
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="{{ asset('css/style.css') }}">
 </head>
 <body>
   <a class="skip" href="#main" data-i18n="skip">Langsung ke isi halaman</a>
@@ -29,12 +30,7 @@
           <button type="button" class="lang-btn" data-lang="id" aria-pressed="true">ID</button>
           <button type="button" class="lang-btn" data-lang="en" aria-pressed="false">EN</button>
         </div>
-        <button type="button" class="icon-btn" id="openSettings" data-i18n-aria="settings" aria-label="Pengaturan">
-          <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="12" r="3"></circle>
-            <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3h0a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5h0a1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9v0a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"></path>
-          </svg>
-        </button>
+
       </div>
     </div>
 
@@ -169,7 +165,6 @@
 
           <div class="chat-tools">
             <button type="button" class="link-btn" id="clearChat" data-i18n="btn_clear"></button>
-            <button type="button" class="link-btn" id="keyState"></button>
           </div>
         </div>
       </div>
@@ -179,42 +174,12 @@
   <footer class="site-footer">
     <div class="wrap narrow">
       <p data-i18n="footer_text"></p>
+      <p><a href="{{ route('admin.login') }}" style="color: rgba(255,255,255,0.4); font-size: 0.8rem; text-decoration: underline;">Panel Admin</a></p>
     </div>
   </footer>
 
-  <!-- Settings dialog -->
-  <dialog id="settings" aria-labelledby="settingsTitle">
-    <form method="dialog" class="dlg" id="settingsForm">
-      <h2 id="settingsTitle" data-i18n="settings_title"></h2>
 
-      <label for="apiKey" data-i18n="s_key"></label>
-      <input id="apiKey" type="password" autocomplete="off" spellcheck="false" placeholder="gsk_…">
-      <p class="hint" data-i18n="s_key_hint"></p>
 
-      <label for="modelName" data-i18n="s_model"></label>
-      <input id="modelName" list="modelList" autocomplete="off" spellcheck="false">
-      <datalist id="modelList">
-        <option value="llama-3.3-70b-versatile"></option>
-        <option value="llama-3.1-8b-instant"></option>
-        <option value="openai/gpt-oss-120b"></option>
-        <option value="openai/gpt-oss-20b"></option>
-      </datalist>
-      <p class="hint" data-i18n="s_model_hint"></p>
-
-      <label class="check">
-        <input type="checkbox" id="rememberKey">
-        <span data-i18n="s_remember"></span>
-      </label>
-
-      <p class="warn" data-i18n="s_warn"></p>
-
-      <div class="btn-row dlg-actions">
-        <button type="submit" value="cancel" class="btn btn-ghost" data-i18n="btn_close"></button>
-        <button type="submit" value="save" class="btn btn-primary" data-i18n="btn_save"></button>
-      </div>
-    </form>
-  </dialog>
-
-  <script src="script.js"></script>
+  <script src="{{ asset('js/script.js') }}"></script>
 </body>
 </html>

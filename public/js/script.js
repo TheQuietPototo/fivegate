@@ -9,10 +9,9 @@
 
 /* ---------- Configuration ---------- */
 const CONFIG = {
-  endpoint: "https://api.groq.com/openai/v1/responses",
-  // Optional: URL of your own server that forwards requests to Groq.
-  // When set, the browser never needs (or sends) the Groq key.
-  proxyUrl: "",
+  endpoint: "https://api.groq.com/openai/v1/chat/completions",
+  // Default URL of our Laravel server proxy endpoint for Groq AI assistant.
+  proxyUrl: "/api/chat",
   defaultModel: "openai/gpt-oss-20b",
   maxHistory: 10, // past chat messages sent with every request
   // Idea-check form: set requireEmail to true if every visitor must give an email address.
@@ -921,10 +920,48 @@ function renderWizard(moveFocus = false) {
   }
 }
 
+function saveIdeaCheckToBackend() {
+  try {
+    const ev = evaluate();
+    let resultStatus = "pass";
+    let stoppedGate = null;
+
+    if (ev.stopped !== null) {
+      const row = ev.rows[ev.stopped];
+      resultStatus = row.status === "unsure" ? "wait" : "stop";
+      stoppedGate = ev.stopped + 1;
+    }
+
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content;
+    const headers = { "Content-Type": "application/json" };
+    if (csrfToken) headers["X-CSRF-TOKEN"] = csrfToken;
+
+    fetch("/api/idea-checks", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        name: state.name || null,
+        email: state.email || null,
+        role: state.role || null,
+        path: state.path || null,
+        idea: state.idea || "",
+        answers: state.answers || {},
+        result_status: resultStatus,
+        stopped_gate: stoppedGate
+      })
+    }).catch(err => console.warn("Could not persist idea check to backend:", err));
+  } catch (err) {
+    console.warn("Failed saving idea check:", err);
+  }
+}
+
 function setView(view, step = state.step) {
   state.view = view;
   state.step = step;
   renderWizard(true);
+  if (view === "result") {
+    saveIdeaCheckToBackend();
+  }
 }
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
@@ -1078,6 +1115,33 @@ function runCalc() {
 
   state.lastCalc = { loadB, loadA, delta, U, flowB, flowA, codB, codA, kwhNet, co2 };
   renderCalc();
+  saveCalculationToBackend(flowB, codB, errB, flowA, codA, errA, extra, saved, ef);
+}
+
+function saveCalculationToBackend(flowB, codB, errB, flowA, codA, errA, extra, saved, ef) {
+  try {
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content;
+    const headers = { "Content-Type": "application/json" };
+    if (csrfToken) headers["X-CSRF-TOKEN"] = csrfToken;
+
+    fetch("/api/calculations", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        flow_before: flowB,
+        cod_before: codB,
+        err_before: Number.isNaN(errB) ? 10 : errB,
+        flow_after: flowA,
+        cod_after: codA,
+        err_after: Number.isNaN(errA) ? 10 : errA,
+        kwh_extra: extra,
+        kwh_saved: saved,
+        ef: Number.isNaN(ef) ? 0.85 : ef,
+      })
+    }).catch(err => console.warn("Could not persist calculation to backend:", err));
+  } catch (err) {
+    console.warn("Failed saving calculation:", err);
+  }
 }
 
 function renderCalc() {
@@ -1149,7 +1213,9 @@ async function streamGroq(messages, onDelta, signal) {
   const key = getKey();
   if (!CONFIG.proxyUrl && !key) throw new AppError("no_key");
 
-  const headers = { "Content-Type": "application/json" };
+  const headers = { "Content-Type": "application/json", "Accept": "text/event-stream, application/json" };
+  const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content;
+  if (csrfToken) headers["X-CSRF-TOKEN"] = csrfToken;
   if (key) headers.Authorization = `Bearer ${key}`;
 
   const res = await fetch(CONFIG.proxyUrl || CONFIG.endpoint, {
@@ -1158,7 +1224,7 @@ async function streamGroq(messages, onDelta, signal) {
     signal,
     body: JSON.stringify({
       model: getModel(),
-      input: messages.map(({ role, content }) => ({ role, content })),
+      messages: messages.map(({ role, content }) => ({ role, content })),
       stream: true,
     }),
   });
@@ -1185,7 +1251,7 @@ async function streamGroq(messages, onDelta, signal) {
       if (data === "[DONE]") return;
       try {
         const event = JSON.parse(data);
-        const piece = event.type === "response.output_text.delta" ? event.delta : "";
+        const piece = event.choices?.[0]?.delta?.content || (event.type === "response.output_text.delta" ? event.delta : "");
         if (piece) onDelta(piece);
       } catch { /* ignore partial JSON */ }
     }
@@ -1289,7 +1355,6 @@ async function sendMessage(displayText, apiText = displayText) {
 
   if (!CONFIG.proxyUrl && !getKey()) {
     addMsg("assistant", `<p>${esc(t("no_key"))}</p>`, "error");
-    openSettings();
     return;
   }
 
@@ -1364,37 +1429,6 @@ $("#clearChat").addEventListener("click", () => {
 });
 
 /* =========================================================
-   Settings dialog
-   ========================================================= */
-const dialog = $("#settings");
-
-function updateKeyState() {
-  const btn = $("#keyState");
-  btn.textContent = CONFIG.proxyUrl ? t("key_proxy") : getKey() ? t("key_set") : t("key_unset");
-  btn.disabled = Boolean(CONFIG.proxyUrl);
-}
-
-function openSettings() {
-  $("#apiKey").value = getKey();
-  $("#modelName").value = getModel();
-  $("#rememberKey").checked = Boolean(store.get(CONFIG.storage.key));
-  if (typeof dialog.showModal === "function") dialog.showModal();
-}
-
-$("#openSettings").addEventListener("click", openSettings);
-$("#keyState").addEventListener("click", openSettings);
-
-$("#settingsForm").addEventListener("submit", (e) => {
-  if (e.submitter?.value !== "save") return;
-  const key = $("#apiKey").value.trim();
-  const model = $("#modelName").value.trim() || CONFIG.defaultModel;
-  store.del(CONFIG.storage.key);
-  if (key) store.set(CONFIG.storage.key, key, !$("#rememberKey").checked);
-  store.set(CONFIG.storage.model, model);
-  updateKeyState();
-});
-
-/* =========================================================
    Language
    ========================================================= */
 function applyLang() {
@@ -1413,7 +1447,6 @@ function applyLang() {
   renderWizard(false);
   renderCalc();
   renderWelcome();
-  updateKeyState();
   sendBtn.textContent = state.streaming ? t("btn_stop") : t("btn_send");
 }
 
