@@ -15,6 +15,8 @@ const CONFIG = {
   proxyUrl: "",
   defaultModel: "openai/gpt-oss-20b",
   maxHistory: 10, // past chat messages sent with every request
+  // Idea-check form: set requireEmail to true if every visitor must give an email address.
+  form: { requireName: true, requireEmail: false },
   storage: { key: "gate.groqKey", model: "gate.model", lang: "gate.lang" },
 };
 
@@ -94,6 +96,15 @@ const UI = {
     check_title: "Cek ide Anda",
     check_intro: "Ceritakan ide Anda, lalu jawab beberapa pertanyaan singkat untuk tiap gerbang. Jawaban “Belum tahu” juga tidak apa-apa.",
     f_role: "Peran Anda",
+    f_name: "Nama Anda",
+    f_name_ph: "Contoh: Budi Santoso",
+    f_email: "Email",
+    f_email_ph: "nama@contoh.com",
+    f_optional: "(boleh dikosongkan)",
+    f_privacy: "Nama dan email hanya tampil di hasil pengecekan pada layar ini dan tidak dikirim ke asisten AI.",
+    name_required: "Tulis nama Anda dulu.",
+    email_required: "Tulis alamat email Anda dulu.",
+    email_invalid: "Alamat email tampaknya belum benar. Periksa lagi atau kosongkan.",
     f_path: "Jenis ide",
     f_idea: "Ide atau perubahan yang ingin Anda periksa",
     f_idea_ph: "Contoh: memakai ulang air cucian kopi dengan bak pengendapan",
@@ -111,6 +122,8 @@ const UI = {
     answer_all: "Jawab semua pertanyaan di gerbang ini dulu.",
 
     res_title: "Hasil pengecekan",
+    res_name: "Nama",
+    res_email: "Email",
     res_idea: "Ide",
     res_role: "Peran",
     res_path: "Jenis",
@@ -233,6 +246,15 @@ const UI = {
     check_title: "Check your idea",
     check_intro: "Describe your idea, then answer a few short questions for each gate. “Not sure” is a fine answer.",
     f_role: "Your role",
+    f_name: "Your name",
+    f_name_ph: "Example: Budi Santoso",
+    f_email: "Email",
+    f_email_ph: "name@example.com",
+    f_optional: "(optional)",
+    f_privacy: "Your name and email only appear in the result on this screen and are not sent to the AI assistant.",
+    name_required: "Please enter your name first.",
+    email_required: "Please enter your email address first.",
+    email_invalid: "That email address does not look right. Check it or leave it empty.",
     f_path: "Type of idea",
     f_idea: "The idea or change you want to check",
     f_idea_ph: "Example: reuse coffee wash water with a settling tank",
@@ -250,6 +272,8 @@ const UI = {
     answer_all: "Please answer every question for this gate first.",
 
     res_title: "Your result",
+    res_name: "Name",
+    res_email: "Email",
     res_idea: "Idea",
     res_role: "Role",
     res_path: "Type",
@@ -625,6 +649,8 @@ const state = {
   step: 0,
   role: "farmer",
   path: "prevention",
+  name: "",
+  email: "",
   idea: "",
   answers: {},
   history: [],
@@ -751,7 +777,22 @@ function introHTML() {
     (ex) => `<button type="button" class="chip-btn" data-action="example" data-text="${esc(L(ex))}">${esc(L(ex))}</button>`
   ).join("");
 
+  const emailLabel = t("f_email") + (CONFIG.form.requireEmail ? "" : " " + t("f_optional"));
+  const nameReq = CONFIG.form.requireName ? ' aria-required="true"' : "";
+  const emailReq = CONFIG.form.requireEmail ? ' aria-required="true"' : "";
+
   return `<form id="introForm" novalidate>
+    <div class="id-grid">
+      <div>
+        <label for="nameInput">${esc(t("f_name"))}</label>
+        <input id="nameInput" type="text" autocomplete="name" maxlength="80" placeholder="${esc(t("f_name_ph"))}" value="${esc(state.name)}"${nameReq}>
+      </div>
+      <div>
+        <label for="emailInput">${esc(emailLabel)}</label>
+        <input id="emailInput" type="email" inputmode="email" autocomplete="email" autocapitalize="none" spellcheck="false" maxlength="120" placeholder="${esc(t("f_email_ph"))}" value="${esc(state.email)}"${emailReq}>
+      </div>
+    </div>
+    <p class="hint id-hint">${esc(t("f_privacy"))}</p>
     <fieldset>
       <legend>${esc(t("f_role"))}</legend>
       <div class="choice-grid">${roles}</div>
@@ -854,6 +895,8 @@ function resultHTML() {
 
   return `<h3 class="wiz-title" tabindex="-1" data-focus>${esc(t("res_title"))}</h3>
     <div class="res-context">
+      ${state.name ? `<p><strong>${esc(t("res_name"))}:</strong> ${esc(state.name)}</p>` : ""}
+      ${state.email ? `<p><strong>${esc(t("res_email"))}:</strong> ${esc(state.email)}</p>` : ""}
       <p><strong>${esc(t("res_idea"))}:</strong> ${esc(state.idea)}</p>
       <p><strong>${esc(t("res_role"))}:</strong> ${esc(L(role.label))}</p>
       <p><strong>${esc(t("res_path"))}:</strong> ${esc(L(path.label))}</p>
@@ -884,11 +927,29 @@ function setView(view, step = state.step) {
   renderWizard(true);
 }
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
+/* Returns null when the form is fine, otherwise { msg, field } for the first problem */
+function validateIntro() {
+  if (CONFIG.form.requireName && state.name.length < 2) {
+    return { msg: "name_required", field: "#nameInput" };
+  }
+  if (state.email) {
+    if (!EMAIL_RE.test(state.email)) return { msg: "email_invalid", field: "#emailInput" };
+  } else if (CONFIG.form.requireEmail) {
+    return { msg: "email_required", field: "#emailInput" };
+  }
+  if (state.idea.length < 3) return { msg: "idea_required", field: "#ideaInput" };
+  return null;
+}
+
 /* Wizard events (delegated, so re-rendering never loses handlers) */
 const wizard = $("#wizard");
 
 wizard.addEventListener("input", (e) => {
   if (e.target.id === "ideaInput") state.idea = e.target.value;
+  else if (e.target.id === "nameInput") state.name = e.target.value;
+  else if (e.target.id === "emailInput") state.email = e.target.value;
 });
 
 wizard.addEventListener("change", (e) => {
@@ -904,12 +965,16 @@ wizard.addEventListener("change", (e) => {
 wizard.addEventListener("submit", (e) => {
   e.preventDefault();
   if (e.target.id === "introForm") {
+    state.name = $("#nameInput").value.trim();
+    state.email = $("#emailInput").value.trim();
     state.idea = $("#ideaInput").value.trim();
-    if (state.idea.length < 3) {
+
+    const problem = validateIntro();
+    if (problem) {
       const err = $("#introErr");
-      err.textContent = t("idea_required");
+      err.textContent = t(problem.msg);
       err.hidden = false;
-      $("#ideaInput").focus();
+      $(problem.field).focus();
       return;
     }
     setView("q", 0);
